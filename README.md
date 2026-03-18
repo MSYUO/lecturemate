@@ -51,7 +51,7 @@
 ## 시작하기
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/lecturemate.git
+git clone https://github.com/MSYUO/lecturemate.git
 cd lecturemate
 npm install
 npm run dev      # http://localhost:5173

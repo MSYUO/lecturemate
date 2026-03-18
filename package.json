@@ -4,11 +4,11 @@
   "description": "PC 전용 올인원 학습 웹앱 - PDF + STT + 코드 실행 + 수식 변환",
   "private": true,
   "type": "module",
-  "author": "YOUR_NAME",
+  "author": "MSYUO",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/YOUR_USERNAME/lecturemate.git"
+    "url": "https://github.com/MSYUO/lecturemate.git"
   },
   "scripts": {
     "dev": "vite",
