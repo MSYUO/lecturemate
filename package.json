@@ -1,13 +1,21 @@
 {
-  "name": "lecture-mate",
-  "private": true,
+  "name": "lecturemate",
   "version": "0.1.0",
+  "description": "PC 전용 올인원 학습 웹앱 - PDF + STT + 코드 실행 + 수식 변환",
+  "private": true,
   "type": "module",
+  "author": "YOUR_NAME",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/YOUR_USERNAME/lecturemate.git"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test": "vitest"
+    "lint": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
