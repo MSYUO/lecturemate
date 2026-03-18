@@ -61,6 +61,14 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // react-pdf 10이 내부에 pdfjs-dist 5.4.x를 별도로 번들합니다.
+      // 루트의 pdfjs-dist(5.5.x)와 버전이 달라 workerSrc ↔ 라이브러리 간
+      // 프로토콜 불일치가 발생하므로, 모든 pdfjs-dist 참조를
+      // react-pdf 내부 버전으로 단일화합니다.
+      'pdfjs-dist': path.resolve(
+        __dirname,
+        './node_modules/react-pdf/node_modules/pdfjs-dist',
+      ),
     },
   },
 
@@ -116,6 +124,10 @@ export default defineConfig({
     globals:     true,
     alias: {
       '@': path.resolve(__dirname, './src'),
+      'pdfjs-dist': path.resolve(
+        __dirname,
+        './node_modules/react-pdf/node_modules/pdfjs-dist',
+      ),
     },
   },
 })
