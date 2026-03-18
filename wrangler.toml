@@ -1,3 +1,6 @@
 name                  = "lecturemate"
 pages_build_output_dir = "dist"
 compatibility_date    = "2025-01-01"
+
+[vars]
+NPM_FLAGS = "--legacy-peer-deps"
