@@ -39,8 +39,32 @@ npm run dev        # http://localhost:5173
 ## 빌드 및 배포
 
 ```bash
-npm run build                                          # dist/ 생성
-wrangler pages deploy dist --project-name lecturemate  # Cloudflare Pages 배포
+npm run build      # dist/ 생성
+```
+
+### Cloudflare Pages (권장)
+
+1. [Cloudflare Dashboard](https://dash.cloudflare.com/) → **Pages** → **Create project**
+2. GitHub 저장소 연결: `lecturemate`
+3. Build settings:
+
+   | 항목 | 값 |
+   |---|---|
+   | Framework preset | None |
+   | Build command | `npm run build` |
+   | Build output directory | `dist` |
+
+4. `main` 브랜치 푸시 시 자동 배포
+
+> `public/_headers` — COOP/COEP/X-Content-Type-Options (SharedArrayBuffer 필수)
+> `public/_redirects` — SPA 라우팅 (`/* /index.html 200`)
+
+### CLI 배포 (선택)
+
+```bash
+npm install -g wrangler
+wrangler login
+wrangler pages deploy dist --project-name lecturemate
 ```
 
 ## Contributing
