@@ -84,23 +84,13 @@ export type JobStatus = 'pending' | 'active' | 'done' | 'failed'
 export type JobType = 'stt-realtime' | 'stt-postprocess' | 'pdf-index' | 'export'
 
 /**
- * 코드 스니펫 실행 언어.
- *
- * - python     Pyodide (CPython WASM) 실행
- * - javascript iframe sandbox 실행
- */
-export type CodeLanguage = 'python' | 'javascript'
-
-/**
  * 현재 활성화된 WASM 리소스 모드.
- * Whisper(400MB)와 Pyodide(200MB)는 동시 활성 금지.
  * ResourceManager가 이 값을 기준으로 WASM 로드/언로드를 관리합니다.
  *
- * - recording  STT Whisper 활성, Pyodide 비활성
- * - reviewing  두 WASM 모두 비활성 (PDF 탐색 모드)
- * - coding     Pyodide 활성, Whisper 비활성
+ * - recording  STT Whisper 활성
+ * - reviewing  Whisper idle(유지) — PDF 탐색 모드
  */
-export type ActiveMode = 'recording' | 'reviewing' | 'coding'
+export type ActiveMode = 'recording' | 'reviewing'
 
 /**
  * PDF 오버레이에서 사용하는 현재 도구 종류.
@@ -110,7 +100,7 @@ export type ActiveMode = 'recording' | 'reviewing' | 'coding'
  * - textbox     텍스트 상자 (더블클릭으로 생성)
  * - tagger      태깅 모드 (Alt+클릭 → 점 태그, 드래그 → 영역 태그)
  */
-export type ToolType = 'pointer' | 'highlighter' | 'textbox' | 'tagger'
+export type ToolType = 'pointer' | 'highlighter' | 'textbox' | 'tagger' | 'pen' | 'shape' | 'translate'
 
 /**
  * 저장 상태 표시 (SaveStatusIndicator에서 사용).
@@ -144,6 +134,25 @@ export type ExportFormat = 'pdf_annotated' | 'markdown' | 'html' | 'json'
 // ============================================================
 
 /**
+ * 굿노트 스타일 폴더.
+ * 세션을 계층적으로 분류합니다. parentId가 null이면 루트 폴더.
+ */
+export interface Folder {
+  /** UUID */
+  id: string
+  /** 폴더 이름 */
+  name: string
+  /** 부모 폴더 ID. null이면 최상위(루트) */
+  parentId: string | null
+  /** 폴더 색상 (CSS 컬러 문자열) */
+  color: string
+  /** 생성 시각 (ms) */
+  createdAt: number
+  /** 수정 시각 (ms) */
+  updatedAt: number
+}
+
+/**
  * 학습 세션.
  * PDF 파일 1개와 녹음 1회를 묶는 최상위 컨테이너.
  * 모든 태그, 어노테이션, STT 세그먼트는 sessionId로 연결됩니다.
@@ -163,6 +172,14 @@ export interface Session {
   updatedAt: number
   /** 오디오 OPFS 파일 삭제 여부 (용량 관리 정책에 의해 삭제된 경우 true) */
   audioDeleted?: boolean
+  /** 소속 폴더 ID. null이면 루트 */
+  folderId?: string | null
+  /** PDF가 첨부된 세션인지 (카드 아이콘 표시용) */
+  hasPdf?: boolean
+  /** 녹음이 있는 세션인지 (카드 아이콘 표시용) */
+  hasRecording?: boolean
+  /** 정리 노트가 있는 세션인지 (카드 아이콘 표시용) */
+  hasNotes?: boolean
 }
 
 /**
@@ -493,39 +510,6 @@ export interface WALEntry {
 }
 
 // ============================================================
-// 코드 스니펫
-// ============================================================
-
-/**
- * Monaco 에디터에서 작성·실행한 코드 스니펫.
- * PDF 페이지와 연결되어 "이 슬라이드에서 작성한 코드" 검색이 가능합니다.
- */
-export interface CodeSnippet {
-  /** 자동 증가 ID */
-  id: string
-  /** 소속 세션 */
-  sessionId: string
-  /** 연결된 PDF (선택 사항) */
-  pdfId?: string
-  /** 연결된 페이지 (1-based, 선택 사항) */
-  pageNumber?: number
-  /** 프로그래밍 언어 */
-  language: CodeLanguage
-  /** 소스 코드 */
-  source: string
-  /** 마지막 실행 표준 출력 결과 */
-  output?: string
-  /** 마지막 실행 오류 메시지 */
-  error?: string
-  /** 마지막 실행 시각 (ms). null이면 한 번도 실행 안 됨 */
-  executedAt: number | null
-  /** 생성 시각 (ms) */
-  createdAt: number
-  /** 수정 시각 (ms) */
-  updatedAt: number
-}
-
-// ============================================================
 // 수식 (Math Expression)
 // ============================================================
 
@@ -599,8 +583,8 @@ export interface UndoPatch {
 // ============================================================
 
 /**
- * 4차원 통합 검색 결과 항목.
- * Fuse.js 5개 인스턴스(STT / 어노테이션 / PDF 원문 / 코드 / 수식)의
+ * 통합 검색 결과 항목.
+ * Fuse.js 4개 인스턴스(STT / 어노테이션 / PDF 원문 / 수식)의
  * 결과를 score 기준으로 통합 정렬한 단일 결과 타입입니다.
  */
 export interface SearchResult {
@@ -609,10 +593,9 @@ export interface SearchResult {
    * - stt        STT 변환 텍스트
    * - annotation 텍스트 상자 / 일반 어노테이션
    * - pdfText    PDF 원문 추출 텍스트
-   * - code       코드 스니펫 (소스 + 출력)
    * - math       수식 원문 및 LaTeX
    */
-  source: 'stt' | 'annotation' | 'pdfText' | 'code' | 'math'
+  source: 'stt' | 'annotation' | 'pdfText' | 'math'
   /** 매칭된 텍스트 (하이라이트 전 원문) */
   text: string
   /** 매칭된 PDF 페이지 번호 (1-based). 없으면 0 */
@@ -623,12 +606,43 @@ export interface SearchResult {
   timestampStart?: number
   /** Fuse.js 유사도 점수 [0, 1]. 높을수록 관련성 높음 */
   score: number
-  /** code 소스일 때 프로그래밍 언어 */
-  codeLanguage?: CodeLanguage
   /** math 소스일 때 LaTeX 문자열 */
   mathLatex?: string
   /** 스티커 필터링 시 사용 (선택 사항) */
   stickerType?: StickerType
+}
+
+// ============================================================
+// 번역 (Translation)
+// ============================================================
+
+/**
+ * PDF 영역 선택 번역 결과.
+ * TranslationSelectBox 컴포넌트에서 생성됩니다.
+ */
+export interface TranslationResult {
+  /** UUID */
+  id: string
+  /** 소속 세션 */
+  sessionId: string
+  /** 소속 PDF */
+  pdfId: string
+  /** 번역 대상 페이지 (1-based) */
+  pageNumber: number
+  /** 선택 영역 (정규화 좌표) */
+  sourceRect: BoundingBox
+  /** 추출된 원본 텍스트 */
+  sourceText: string
+  /** 번역된 텍스트 */
+  translatedText: string
+  /** 소스 언어 코드 (자동 감지: '') */
+  sourceLang: string
+  /** 대상 언어 코드 */
+  targetLang: string
+  /** 표시 방식 */
+  displayMode: 'overlay' | 'panel'
+  /** 생성 시각 (ms) */
+  createdAt: number
 }
 
 // ============================================================
@@ -697,26 +711,3 @@ export type PdfWorkerOutMessage =
   | { type: 'done'; pdfId: string }
   | { type: 'error'; message: string }
 
-/**
- * CodeRunnerWorker ↔ 메인 스레드 메시지.
- */
-export type CodeRunnerInMessage =
-  | { type: 'init' }
-  | { type: 'run'; snippetId: string; language: CodeLanguage; source: string }
-  | { type: 'interrupt' }
-
-export type CodeRunnerOutMessage =
-  | { type: 'progress'; percent: number }
-  | { type: 'ready' }
-  | { type: 'output'; snippetId: string; text: string }
-  | { type: 'stderr'; snippetId: string; text: string }
-  | { type: 'error'; snippetId: string; message: string }
-  | { type: 'result'; snippetId: string; executionTime: number; status: 'ok' | 'error' | 'timeout' }
-
-/** JS 샌드박스 실행 결과 */
-export interface JsSandboxResult {
-  stdout:        string[]
-  stderr:        string[]
-  executionTime: number
-  status:        'ok' | 'error' | 'timeout'
-}

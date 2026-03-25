@@ -21,7 +21,6 @@ const SOURCE_META: Record<SearchResult['source'], { color: string; label: string
   stt:        { color: '#3b82f6', label: 'STT'  },
   annotation: { color: '#22c55e', label: '필기' },
   pdfText:    { color: '#6b7280', label: 'PDF'  },
-  code:       { color: '#a855f7', label: '코드' },
   math:       { color: '#f97316', label: '수식' },
 }
 
@@ -104,11 +103,6 @@ function ResultRow({ result, query, isFocused, onClick }: ResultRowProps) {
           {result.timestampStart !== undefined && (
             <span className="text-xs tabular-nums" style={{ color: 'var(--text-disabled)' }}>
               {formatTime(result.timestampStart)}
-            </span>
-          )}
-          {result.codeLanguage && (
-            <span className="text-xs" style={{ color: 'var(--text-disabled)' }}>
-              {result.codeLanguage}
             </span>
           )}
         </div>

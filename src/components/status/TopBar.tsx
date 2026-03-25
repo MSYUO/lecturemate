@@ -28,13 +28,15 @@ interface TopBarProps {
   onPdfChange?: (file: File) => void
   /** 현재 열려 있는 PDF 파일명 표시용 */
   pdfFileName?: string
+  /** 홈 화면으로 돌아가기 콜백 (세션 뷰에서만 표시) */
+  onGoHome?: () => void
 }
 
 // ============================================================
 // TopBar
 // ============================================================
 
-export function TopBar({ onPdfChange, pdfFileName }: TopBarProps = {}) {
+export function TopBar({ onPdfChange, pdfFileName, onGoHome }: TopBarProps = {}) {
   const sessionId   = useSessionStore((s) => s.sessionId)
   const pdfInputRef = useRef<HTMLInputElement>(null)
 
@@ -48,8 +50,25 @@ export function TopBar({ onPdfChange, pdfFileName }: TopBarProps = {}) {
         boxShadow:       '0 1px 0 var(--border-subtle)',
       }}
     >
-      {/* ── 좌측: 로고 + 세션명 ──────────────────────────── */}
+      {/* ── 좌측: 홈 버튼 + 로고 + 세션명 ───────────────── */}
       <div className="flex items-center gap-3 min-w-0">
+        {/* ← 홈 버튼 */}
+        {onGoHome && (
+          <>
+            <button
+              onClick={onGoHome}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all hover:brightness-110 active:scale-95 shrink-0"
+              style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)' }}
+              title="홈으로 돌아가기"
+            >
+              ← 홈
+            </button>
+            <div
+              className="shrink-0"
+              style={{ width: 1, height: 16, backgroundColor: 'var(--border-default)' }}
+            />
+          </>
+        )}
         {/* 로고 */}
         <div className="flex items-center gap-2 shrink-0">
           <div

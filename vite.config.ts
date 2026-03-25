@@ -61,14 +61,6 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
-      // react-pdf 10이 내부에 pdfjs-dist 5.4.x를 별도로 번들합니다.
-      // 루트의 pdfjs-dist(5.5.x)와 버전이 달라 workerSrc ↔ 라이브러리 간
-      // 프로토콜 불일치가 발생하므로, 모든 pdfjs-dist 참조를
-      // react-pdf 내부 버전으로 단일화합니다.
-      'pdfjs-dist': path.resolve(
-        __dirname,
-        './node_modules/react-pdf/node_modules/pdfjs-dist',
-      ),
     },
   },
 
@@ -102,20 +94,26 @@ export default defineConfig({
   },
 
   optimizeDeps: {
-    exclude: ['@xenova/transformers'],
+    // react-pdf / pdfjs-dist: new URL(..., import.meta.url) 브라우저 전용 API 사용.
+    // Vite pre-bundle(esbuild/Node.js 컨텍스트)에서 깨지므로 반드시 exclude.
+    exclude: ['@xenova/transformers', 'react-pdf', 'pdfjs-dist'],
+    // warning: CJS 모듈 → react-pdf 의존성. exclude된 패키지 트리 안에서
+    // ESM default import로 사용되므로 Vite가 CJS→ESM 변환하도록 명시적 include.
+    include: ['warning'],
   },
 
   server: {
     headers: {
+      // COEP 제거: require-corp가 HuggingFace CDN fetch를 차단해 Whisper 모델
+      // 다운로드 실패("AI 오류") 원인. 프로덕션은 public/_headers에서 SW 캐시와
+      // 함께 적용되므로 dev에서만 제거.
       'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
     },
   },
 
   preview: {
     headers: {
       'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
     },
   },
 
@@ -124,10 +122,6 @@ export default defineConfig({
     globals:     true,
     alias: {
       '@': path.resolve(__dirname, './src'),
-      'pdfjs-dist': path.resolve(
-        __dirname,
-        './node_modules/react-pdf/node_modules/pdfjs-dist',
-      ),
     },
   },
 })

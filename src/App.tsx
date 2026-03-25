@@ -33,6 +33,7 @@ import { DndContext, DragOverlay } from '@dnd-kit/core'
 import { useSessionStore } from '@/stores/sessionStore'
 import { useAnnotationStore } from '@/stores/annotationStore'
 import { useUndoRedoStore } from '@/stores/undoRedoStore'
+import { useRouterStore } from '@/stores/routerStore'
 import { PDFViewerPanel } from '@/components/pdf/PDFViewerPanel'
 import { SidebarPanel } from '@/components/sidebar/SidebarPanel'
 import { Toolbar } from '@/components/toolbar/Toolbar'
@@ -45,7 +46,13 @@ import { useDragDrop } from '@/hooks/useDragDrop'
 import { useSearch } from '@/hooks/useSearch'
 import { useSearchStore } from '@/stores/searchStore'
 import { SearchOverlay } from '@/components/search/SearchOverlay'
-import type { SttSegment } from '@/types'
+import { HomePage } from '@/components/home/HomePage'
+import { FolderPage } from '@/components/home/FolderPage'
+import { SettingsPage } from '@/components/settings/SettingsPage'
+import { SaveLocationModal } from '@/components/common/SaveLocationModal'
+import { useSaveLocationStore } from '@/stores/saveLocationStore'
+import { db } from '@/db/schema'
+import type { Session, SttSegment } from '@/types'
 
 // ============================================================
 // 드래그 오버레이 — 고스트 카드
@@ -91,6 +98,11 @@ const DEFAULT_LEFT_PCT = 65
 // ============================================================
 
 export default function App() {
+  // ---- 라우터 ----
+  const currentRoute = useRouterStore((s) => s.currentPage)
+  const navigate     = useRouterStore((s) => s.navigate)
+  const inSession    = currentRoute === 'session'
+
   // ---- PDF 파일 상태 (TopBar → PDFViewerPanel 공유) ----
   const [pdfFile, setPdfFile] = useState<File | null>(null)
 
@@ -117,6 +129,41 @@ export default function App() {
   const addPageTag     = useUndoRedoStore((s) => s.addPageTag)
   const undo           = useUndoRedoStore((s) => s.undo)
   const redo           = useUndoRedoStore((s) => s.redo)
+
+  // ---- 홈 ↔ 세션 라우팅 ----
+
+  const handleOpenSession = useCallback((session: Session) => {
+    useSessionStore.getState().openSession(session.id, session.pdfId ?? null)
+    setPdfFile(null) // 기존 PDF 초기화; 사용자가 세션에서 재첨부
+    navigate('session', { sessionId: session.id })
+  }, [navigate])
+
+  const handleNewSession = useCallback(async (folderId: string | null) => {
+    const id  = crypto.randomUUID()
+    const now = Date.now()
+    await db.sessions.add({
+      id,
+      title:     '새 세션',
+      folderId,
+      pdfId:     null,
+      duration:  0,
+      createdAt: now,
+      updatedAt: now,
+    })
+    useSessionStore.getState().openSession(id, null)
+    setPdfFile(null)
+    navigate('session', { sessionId: id })
+  }, [navigate])
+
+  // PDF 첨부 시 저장 위치 선택 모달 (defaultSaveFolderId 없을 때)
+  const handlePdfChange = useCallback(async (file: File) => {
+    const { defaultSaveFolderId } = useSessionStore.getState()
+    if (!defaultSaveFolderId) {
+      const result = await useSaveLocationStore.getState().requestFolder('pdf')
+      if (result === false) return
+    }
+    setPdfFile(file)
+  }, [])
 
   // ============================================================
   // 앱 시작 시 크래시 복구
@@ -177,14 +224,16 @@ export default function App() {
   // 전역 단축키
   // ============================================================
 
-  // ── 도구 전환 ────────────────────────────────────────────
-  useHotkeys('v', () => setActiveTool('pointer'),     { preventDefault: true })
-  useHotkeys('h', () => setActiveTool('highlighter'),  { preventDefault: true })
-  useHotkeys('t', () => setActiveTool('textbox'),     { preventDefault: true })
-  useHotkeys('s', () => setActiveTool('tagger'),      { preventDefault: true })
+  // ── 도구 전환 (세션에서만 활성) ──────────────────────────
+  useHotkeys('v', () => setActiveTool('pointer'),     { enabled: inSession, preventDefault: true })
+  useHotkeys('h', () => setActiveTool('highlighter'), { enabled: inSession, preventDefault: true })
+  useHotkeys('t', () => setActiveTool('textbox'),     { enabled: inSession, preventDefault: true })
+  useHotkeys('s', () => setActiveTool('tagger'),      { enabled: inSession, preventDefault: true })
+  useHotkeys('p', () => setActiveTool('pen'),         { enabled: inSession, preventDefault: true })
+  useHotkeys('g', () => setActiveTool('shape'),       { enabled: inSession, preventDefault: true })
 
   // ── 태깅 모드 ────────────────────────────────────────────
-  useHotkeys('tab', (e) => { e.preventDefault(); toggleTaggingMode() })
+  useHotkeys('tab', (e) => { e.preventDefault(); toggleTaggingMode() }, { enabled: inSession })
 
   // ── 페이지 전체 태그 (Ctrl+Space) ────────────────────────
   useHotkeys('ctrl+space', (e) => {
@@ -192,17 +241,17 @@ export default function App() {
     if (!sessionId || !pdfId) return
     const { currentTime } = useSessionStore.getState()
     addPageTag({ sessionId, pdfId, pageNumber: currentPage, timestampStart: currentTime })
-  }, { enableOnFormTags: false }, [sessionId, pdfId, currentPage])
+  }, { enabled: inSession, enableOnFormTags: false }, [sessionId, pdfId, currentPage])
 
   // ── Undo / Redo ──────────────────────────────────────────
-  useHotkeys('ctrl+z',       (e) => { e.preventDefault(); undo() })
-  useHotkeys('ctrl+shift+z', (e) => { e.preventDefault(); redo() })
+  useHotkeys('ctrl+z',       (e) => { e.preventDefault(); undo() }, { enabled: inSession })
+  useHotkeys('ctrl+shift+z', (e) => { e.preventDefault(); redo() }, { enabled: inSession })
 
   // ── 검색 (Ctrl+F) ────────────────────────────────────────
   useHotkeys('ctrl+f', (e) => {
     e.preventDefault()
     toggleSearch()
-  })
+  }, { enabled: inSession })
 
   // ── 북마크 토글 (Ctrl+B) ─────────────────────────────────
   useHotkeys('ctrl+b', (e) => {
@@ -214,7 +263,7 @@ export default function App() {
     } else {
       addBookmark({ sessionId, pdfId, pageNumber: currentPage, title: `페이지 ${currentPage}` })
     }
-  }, {}, [sessionId, pdfId, currentPage, bookmarks])
+  }, { enabled: inSession }, [sessionId, pdfId, currentPage, bookmarks])
 
   // ── 수동 저장 (Ctrl+S) ───────────────────────────────────
   useHotkeys('ctrl+s', (e) => {
@@ -224,23 +273,78 @@ export default function App() {
               s.dirtyHighlights.size + s.dirtyTextboxes.size +
               s.dirtyStickers.size + s.dirtyBookmarks.size
     console.log(`[LectureMate] Ctrl+S — 수동 저장 (dirty: ${n}건) — Phase 3에서 구현`)
-  })
+  }, { enabled: inSession })
 
   // ── 내보내기 (Ctrl+E) ────────────────────────────────────
   useHotkeys('ctrl+e', (e) => {
     e.preventDefault()
     console.log('[LectureMate] Ctrl+E — 내보내기 (Phase 6에서 구현)')
-  })
+  }, { enabled: inSession })
 
   // ── Ctrl+R / Ctrl+Shift+R: RecordingControls 컴포넌트가 처리 ──
 
   // ── Escape ───────────────────────────────────────────────
-  useHotkeys('escape', () => deselect(), { enableOnFormTags: false })
+  useHotkeys('escape', () => deselect(), { enabled: inSession, enableOnFormTags: false })
 
   // ============================================================
   // 렌더
   // ============================================================
 
+  // ── 홈 화면 ─────────────────────────────────────────────────
+  if (currentRoute === 'home') {
+    return (
+      <>
+        <div
+          key="home"
+          className="page-enter flex flex-col h-screen overflow-hidden"
+          style={{ minWidth: 1024, backgroundColor: '#F9FAFB' }}
+        >
+          <HomePage
+            onOpenSession={handleOpenSession}
+            onNewSession={(folderId) => void handleNewSession(folderId)}
+          />
+        </div>
+        <SaveLocationModal />
+      </>
+    )
+  }
+
+  // ── 폴더 화면 ────────────────────────────────────────────────
+  if (currentRoute === 'folder') {
+    return (
+      <>
+        <div
+          key="folder"
+          className="page-enter flex flex-col h-screen overflow-hidden"
+          style={{ minWidth: 1024, backgroundColor: '#F9FAFB' }}
+        >
+          <FolderPage
+            onOpenSession={handleOpenSession}
+            onNewSession={(folderId) => void handleNewSession(folderId)}
+          />
+        </div>
+        <SaveLocationModal />
+      </>
+    )
+  }
+
+  // ── 설정 화면 ────────────────────────────────────────────────
+  if (currentRoute === 'settings') {
+    return (
+      <>
+        <div
+          key="settings"
+          className="page-enter flex flex-col h-screen overflow-hidden"
+          style={{ minWidth: 1024, backgroundColor: '#F9FAFB' }}
+        >
+          <SettingsPage />
+        </div>
+        <SaveLocationModal />
+      </>
+    )
+  }
+
+  // ── 세션 뷰 ─────────────────────────────────────────────────
   return (
     <DndContext
       sensors={dnd.sensors}
@@ -248,7 +352,8 @@ export default function App() {
       onDragEnd={dnd.handleDragEnd}
     >
     <div
-      className="flex flex-col h-screen overflow-hidden"
+      key="session"
+      className="page-enter flex flex-col h-screen overflow-hidden"
       style={{
         minWidth:        1024,
         backgroundColor: 'var(--bg-secondary)',
@@ -257,7 +362,8 @@ export default function App() {
       {/* ── TopBar ────────────────────────────────────────── */}
       <TopBar
         pdfFileName={pdfFile?.name}
-        onPdfChange={(file) => { setPdfFile(file) }}
+        onPdfChange={(file) => void handlePdfChange(file)}
+        onGoHome={() => navigate('home')}
       />
 
       {/* ── MainLayout ────────────────────────────────────── */}
@@ -273,6 +379,7 @@ export default function App() {
           <PDFViewerPanel
             pdfFile={pdfFile}
             onRequestOpen={() => {/* TopBar의 input이 처리 */}}
+            onFileSelected={(file) => setPdfFile(file)}
           />
         </div>
 
@@ -320,6 +427,9 @@ export default function App() {
 
     {/* ── 검색 모달 (Ctrl+F) ────────────────────────────── */}
     <SearchOverlay />
+
+    {/* ── 저장 위치 선택 모달 ─────────────────────────── */}
+    <SaveLocationModal />
     </DndContext>
   )
 }

@@ -11,7 +11,6 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { createPortal } from 'react-dom'
 import { Document, Page, pdfjs } from 'react-pdf'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
@@ -19,42 +18,38 @@ import { useDroppable } from '@dnd-kit/core'
 import { useSessionStore } from '@/stores/sessionStore'
 import { useAnnotationStore } from '@/stores/annotationStore'
 import { useUndoRedoStore } from '@/stores/undoRedoStore'
-import { useCodeStore } from '@/stores/codeStore'
-import { isCodeBlock, detectLanguage } from '@/lib/codeDetector'
 import { OverlayCanvas } from './OverlayCanvas'
 import { HighlightLayer } from './HighlightLayer'
 import { AnnotationLayer } from './AnnotationLayer'
 import { StickerLayer } from './StickerLayer'
 import { BookmarkTabs } from './BookmarkTabs'
+import { TranslationSelectBox } from './TranslationSelectBox'
+import { TranslationOverlay } from './TranslationOverlay'
 import { StickerPalette } from '@/components/toolbar/StickerPalette'
 import { pdfDropId } from '@/hooks/useDragDrop'
 import { db } from '@/db/schema'
 import type { StickerType, PdfWorkerOutMessage } from '@/types'
-import type { EditorLanguage } from '@/stores/codeStore'
 
 // ============================================================
 // PDF.js 워커 설정
 // ============================================================
 
-// Vite의 `new URL(module, import.meta.url)` 패턴으로 Worker 파일을
-// 번들에 포함시킵니다. COOP/COEP 환경에서 CDN 대신 로컬 파일을 사용합니다.
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.min.mjs',
-  import.meta.url,
-).toString()
+// public/pdf.worker.min.mjs로 고정 (pdfjs-dist 5.4.296, react-pdf 내부 버전과 동일)
+// optimizeDeps.exclude와 충돌 없이 dev/prod 양쪽에서 동일하게 동작합니다.
+pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
 
 // ============================================================
 // 상수
 // ============================================================
 
-/** 현재 페이지 기준 ±RANGE 내 페이지만 실제 렌더링합니다 */
-const VIRTUALIZE_RANGE = 2
-
-/** 가상화 placeholder 높이 (px) — A4 용지 비율 기준 */
-const PLACEHOLDER_HEIGHT = 842
-
 /** PDF 렌더링 너비 (px) */
 const PDF_WIDTH = 720
+
+/** 뷰포트에 보이는 페이지 기준 ±RANGE 내 페이지만 실제 렌더링합니다 */
+const VIRTUALIZE_RANGE = 1
+
+/** 가상화 placeholder 높이 (px) — A4 용지 720px 폭 기준 (≈720×1.414) */
+const PLACEHOLDER_HEIGHT = Math.round(PDF_WIDTH * 1.414)
 
 /** 파일명 + 크기 기반 결정적 pdfId (같은 파일은 항상 동일한 ID) */
 function derivePdfId(file: File): string {
@@ -114,13 +109,18 @@ interface PDFViewerPanelProps {
    * controlled mode에서 사용합니다.
    */
   onRequestOpen?: () => void
+  /**
+   * controlled mode에서 내부 파일 선택(빈 영역 클릭)으로 파일이 선택됐을 때
+   * 부모 상태를 업데이트할 수 있도록 파일을 전달합니다.
+   */
+  onFileSelected?: (file: File) => void
 }
 
 // ============================================================
 // PDFViewerPanel
 // ============================================================
 
-export function PDFViewerPanel({ pdfFile: pdfFileProp, onRequestOpen: _onRequestOpen }: PDFViewerPanelProps = {}) {
+export function PDFViewerPanel({ pdfFile: pdfFileProp, onRequestOpen: _onRequestOpen, onFileSelected }: PDFViewerPanelProps = {}) {
   const [pdfFileInternal, setPdfFileInternal] = useState<File | null>(null)
   // controlled 여부: pdfFileProp이 undefined가 아니면 controlled
   const isControlled = pdfFileProp !== undefined
@@ -131,14 +131,6 @@ export function PDFViewerPanel({ pdfFile: pdfFileProp, onRequestOpen: _onRequest
   const [isInputFocused, setIsInputFocused] = useState(false)
   const [activeStickerType, setActiveStickerType] = useState<StickerType>('important')
   const [stickerPaletteOpen, setStickerPaletteOpen] = useState(false)
-
-  /** 코드 감지 툴팁 (텍스트 선택 시 표시) */
-  const [codeTooltip, setCodeTooltip] = useState<{
-    x: number; y: number; text: string; lang: EditorLanguage
-  } | null>(null)
-
-  const setSource         = useCodeStore((s) => s.setSource)
-  const setEditorLanguage = useCodeStore((s) => s.setEditorLanguage)
 
   // controlled mode에서 pdfFile이 바뀌면 numPages 초기화
   useEffect(() => {
@@ -151,12 +143,26 @@ export function PDFViewerPanel({ pdfFile: pdfFileProp, onRequestOpen: _onRequest
   const fileInputRef = useRef<HTMLInputElement>(null)
   /** 각 페이지 컨테이너 DOM 참조 (1-based 인덱스용, [0] = page 1) */
   const pageRefs = useRef<(HTMLDivElement | null)[]>([])
+  /** 스크롤 가능한 PDF 뷰 영역 (IntersectionObserver root) */
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  /** 한 번이라도 렌더된 페이지 Set — 캐시, 다시 placeholder로 되돌리지 않음 */
+  const renderedPagesRef   = useRef<Set<number>>(new Set<number>())
+  /** 페이지별 실제 렌더 높이 캐시 (px) */
+  const pageHeightsRef     = useRef<Map<number, number>>(new Map<number, number>())
+  /** 프로그래밍적 스크롤(버튼·북마크) 중 IO 업데이트 억제 플래그 */
+  const isProgramScrollRef = useRef(false)
+  const scrollEndTimerRef  = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  /** 각 페이지의 현재 뷰포트 교차 비율 */
+  const pageRatiosRef      = useRef<Map<number, number>>(new Map<number, number>())
+  /** 현재 실제로 뷰포트에 보이는 페이지 (sessionStore currentPage와 분리) */
+  const [viewportPage, setViewportPage] = useState(1)
 
   const currentPage    = useSessionStore((s) => s.currentPage)
   const setCurrentPage = useSessionStore((s) => s.setCurrentPage)
   const sessionId      = useSessionStore((s) => s.sessionId)
   const pdfId          = useSessionStore((s) => s.pdfId)
   const setPdfId       = useSessionStore((s) => s.setPdfId)
+  const activeToolType = useSessionStore((s) => s.activeToolType)
 
   /** PDF 텍스트 추출 Worker */
   const pdfWorkerRef   = useRef<Worker | null>(null)
@@ -165,12 +171,17 @@ export function PDFViewerPanel({ pdfFile: pdfFileProp, onRequestOpen: _onRequest
   const addBookmark    = useUndoRedoStore((s) => s.addBookmark)
   const deleteBookmark = useUndoRedoStore((s) => s.deleteBookmark)
 
-  // currentPage가 바뀌면 해당 페이지로 부드럽게 스크롤
+  // currentPage가 버튼/북마크 등에 의해 바뀌면 해당 페이지로 스크롤
+  // isProgramScrollRef를 세워 IntersectionObserver가 setCurrentPage를 덮어쓰지 않도록 방지
   useEffect(() => {
     const el = pageRefs.current[currentPage - 1]
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    }
+    if (!el) return
+    isProgramScrollRef.current = true
+    clearTimeout(scrollEndTimerRef.current)
+    scrollEndTimerRef.current = setTimeout(() => {
+      isProgramScrollRef.current = false
+    }, 800)
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, [currentPage])
 
   // ----------------------------------------------------------
@@ -214,69 +225,63 @@ export function PDFViewerPanel({ pdfFile: pdfFileProp, onRequestOpen: _onRequest
   }, [sessionId, pdfId, numPages, currentPage, bookmarks, addBookmark, deleteBookmark])
 
   // ----------------------------------------------------------
-  // S 키 — 스티커 팔레트 토글
+  // tagger 도구 전환 시 스티커 팔레트 자동 표시
+  // (S 키 전역 핸들러는 App.tsx useHotkeys에서 처리하므로 여기서 중복 등록 안 함)
   // ----------------------------------------------------------
+  const prevToolTypeRef = useRef(activeToolType)
   useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (
-        e.key !== 's' && e.key !== 'S' ||
-        e.ctrlKey || e.metaKey || e.altKey ||
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
-      ) return
-      setStickerPaletteOpen((v) => !v)
+    if (activeToolType === 'tagger' && prevToolTypeRef.current !== 'tagger') {
+      setStickerPaletteOpen(true)
     }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [])
+    prevToolTypeRef.current = activeToolType
+  }, [activeToolType])
 
   // ----------------------------------------------------------
-  // PDF 텍스트 선택 → 코드 감지 툴팁
+  // IntersectionObserver — 스크롤 시 현재 페이지 자동 추적
+  // 뷰포트에 들어온 페이지: renderedPagesRef 캐시 + currentPage 업데이트
   // ----------------------------------------------------------
-
   useEffect(() => {
-    const handleMouseUp = () => {
-      // 선택이 확정될 때까지 짧게 대기
-      setTimeout(() => {
-        const sel = window.getSelection()
-        if (!sel || sel.isCollapsed) { setCodeTooltip(null); return }
-        const text = sel.toString().trim()
-        if (text.length < 10 || !isCodeBlock(text)) { setCodeTooltip(null); return }
-        try {
-          const rect = sel.getRangeAt(0).getBoundingClientRect()
-          setCodeTooltip({
-            x:    rect.left + rect.width / 2,
-            y:    rect.bottom + 8,
-            text,
-            lang: detectLanguage(text),
-          })
-        } catch {
-          setCodeTooltip(null)
+    if (numPages === 0) return
+
+    const container = scrollContainerRef.current
+    // 새 PDF 로드 시 캐시 초기화
+    renderedPagesRef.current = new Set<number>()
+    pageRatiosRef.current.clear()
+    setViewportPage(1)
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          const pn = parseInt((entry.target as HTMLElement).dataset.pn ?? '0', 10)
+          if (!pn) return
+          if (entry.isIntersecting) {
+            pageRatiosRef.current.set(pn, entry.intersectionRatio)
+            renderedPagesRef.current.add(pn) // 한번 보인 페이지는 캐시에 추가
+          } else {
+            pageRatiosRef.current.delete(pn)
+          }
+        })
+
+        // 프로그래밍적 스크롤 중에는 currentPage를 덮어쓰지 않음
+        if (isProgramScrollRef.current) return
+
+        let bestPage = 0, bestRatio = 0
+        pageRatiosRef.current.forEach((ratio, pn) => {
+          if (ratio > bestRatio) { bestRatio = ratio; bestPage = pn }
+        })
+        if (bestPage > 0) {
+          setViewportPage(bestPage)
+          setCurrentPage(bestPage)
         }
-      }, 10)
-    }
+      },
+      { root: container, threshold: [0, 0.1, 0.3, 0.5] },
+    )
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setCodeTooltip(null)
-    }
+    pageRefs.current.forEach((el) => { if (el) io.observe(el) })
 
-    document.addEventListener('mouseup', handleMouseUp)
-    document.addEventListener('keydown', handleKeyDown)
-    return () => {
-      document.removeEventListener('mouseup', handleMouseUp)
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [])
-
-  const handleCopyToCode = useCallback(() => {
-    if (!codeTooltip) return
-    setSource(codeTooltip.text)
-    setEditorLanguage(codeTooltip.lang)
-    setCodeTooltip(null)
-    window.getSelection()?.removeAllRanges()
-    // 사이드바를 코드 탭으로 전환하도록 이벤트 발송
-    window.dispatchEvent(new CustomEvent('lm:switch-tab', { detail: 'code' }))
-  }, [codeTooltip, setSource, setEditorLanguage])
+    return () => io.disconnect()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [numPages, setCurrentPage])
 
   // ----------------------------------------------------------
   // 파일 처리
@@ -286,12 +291,17 @@ export function PDFViewerPanel({ pdfFile: pdfFileProp, onRequestOpen: _onRequest
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0]
       if (!file) return
-      if (!isControlled) setPdfFileInternal(file)
+      if (!isControlled) {
+        setPdfFileInternal(file)
+      } else {
+        // controlled mode: 부모(App)의 상태를 업데이트해야 렌더링됨
+        onFileSelected?.(file)
+      }
       setNumPages(0)
       setCurrentPage(1)
       e.target.value = ''
     },
-    [isControlled, setCurrentPage],
+    [isControlled, onFileSelected, setCurrentPage],
   )
 
   const onDocumentLoadSuccess = useCallback(({ numPages }: { numPages: number }) => {
@@ -493,7 +503,7 @@ export function PDFViewerPanel({ pdfFile: pdfFileProp, onRequestOpen: _onRequest
       </div>
 
       {/* ── PDF 뷰 영역 ───────────────────────────────────── */}
-      <div className="flex-1 relative overflow-y-auto flex flex-col items-center py-8 gap-6">
+      <div ref={scrollContainerRef} className="flex-1 relative overflow-y-auto flex flex-col items-center py-8 gap-6">
         {/* 북마크 탭 (좌측 세로 탭) */}
         {numPages > 0 && <BookmarkTabs totalPages={numPages} />}
         {!pdfFile ? (
@@ -536,6 +546,7 @@ export function PDFViewerPanel({ pdfFile: pdfFileProp, onRequestOpen: _onRequest
           <Document
             file={pdfFile}
             onLoadSuccess={onDocumentLoadSuccess}
+            onLoadError={(err) => console.error('[PDFViewer] onLoadError:', err)}
             loading={
               <div
                 className="flex items-center gap-2 py-12 text-sm"
@@ -558,12 +569,16 @@ export function PDFViewerPanel({ pdfFile: pdfFileProp, onRequestOpen: _onRequest
             }
           >
             {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => {
-              const isVisible = Math.abs(pageNum - currentPage) <= VIRTUALIZE_RANGE
+              // 렌더 여부: 뷰포트 ±RANGE 이내 OR 이미 한번 렌더된 캐시 페이지
+              const nearViewport = Math.abs(pageNum - viewportPage) <= VIRTUALIZE_RANGE
+              const isCached     = renderedPagesRef.current.has(pageNum)
+              const isVisible    = nearViewport || isCached
 
               return (
                 <div
                   key={pageNum}
                   ref={(el) => { pageRefs.current[pageNum - 1] = el }}
+                  data-pn={pageNum}
                 >
                   {isVisible ? (
                     /*
@@ -585,6 +600,9 @@ export function PDFViewerPanel({ pdfFile: pdfFileProp, onRequestOpen: _onRequest
                           width={PDF_WIDTH}
                           renderAnnotationLayer
                           renderTextLayer
+                          onRenderSuccess={({ height }) => {
+                            if (height) pageHeightsRef.current.set(pageNum, height)
+                          }}
                         />
                       </div>
                       {/* 태그 오버레이 + 형광펜 드래그 생성 */}
@@ -593,16 +611,30 @@ export function PDFViewerPanel({ pdfFile: pdfFileProp, onRequestOpen: _onRequest
                       <HighlightLayer pageNumber={pageNum} />
                       {/* 스티커 레이어 */}
                       <StickerLayer pageNumber={pageNum} activeStickerType={activeStickerType} />
+                      {/* 번역 오버레이 레이어 (AnnotationLayer 아래 — 텍스트 상자가 위에 오도록) */}
+                      <TranslationOverlay
+                        pageNumber={pageNum}
+                        pageHeight={pageHeightsRef.current.get(pageNum) ?? PLACEHOLDER_HEIGHT}
+                      />
                       {/* 텍스트 상자 레이어 (TextBox 삭제 버튼이 밖으로 나올 수 있음) */}
                       <AnnotationLayer pageNumber={pageNum} />
+                      {/* 번역 영역 선택 도구 */}
+                      {activeToolType === 'translate' && pdfFile && (
+                        <TranslationSelectBox
+                          pageNumber={pageNum}
+                          pdfFile={pdfFile}
+                          pageWidth={PDF_WIDTH}
+                          pageHeight={pageHeightsRef.current.get(pageNum) ?? PLACEHOLDER_HEIGHT}
+                        />
+                      )}
                     </DroppablePage>
                   ) : (
-                    /* 빈 placeholder — 스크롤 높이 유지용 */
+                    /* 빈 placeholder — 실제 렌더 높이 캐시 사용, 없으면 기본값 */
                     <div
                       className="rounded-lg"
                       style={{
-                        width: PDF_WIDTH,
-                        height: PLACEHOLDER_HEIGHT,
+                        width:           PDF_WIDTH,
+                        height:          pageHeightsRef.current.get(pageNum) ?? PLACEHOLDER_HEIGHT,
                         backgroundColor: 'var(--bg-tertiary)',
                       }}
                     />
@@ -622,40 +654,6 @@ export function PDFViewerPanel({ pdfFile: pdfFileProp, onRequestOpen: _onRequest
         onClose={() => setStickerPaletteOpen(false)}
       />
 
-      {/* ── 코드 감지 툴팁 (텍스트 선택 시 코드면 표시) ── */}
-      {codeTooltip && createPortal(
-        <div
-          style={{
-            position:  'fixed',
-            left:      codeTooltip.x,
-            top:       codeTooltip.y,
-            transform: 'translateX(-50%)',
-            zIndex:    9999,
-          }}
-          // 클릭해도 텍스트 선택이 해제되지 않도록 mousedown 기본 동작 차단
-          onMouseDown={(e) => e.preventDefault()}
-        >
-          <button
-            onClick={handleCopyToCode}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium shadow-lg"
-            style={{
-              backgroundColor: 'var(--accent-blue)',
-              color:           '#fff',
-              border:          'none',
-              cursor:          'pointer',
-              whiteSpace:      'nowrap',
-            }}
-          >
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-              <polyline points="16 18 22 12 16 6" />
-              <polyline points="8 6 2 12 8 18" />
-            </svg>
-            코드로 복사 ({codeTooltip.lang})
-          </button>
-        </div>,
-        document.body,
-      )}
     </div>
   )
 }

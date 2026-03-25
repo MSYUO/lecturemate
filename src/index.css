@@ -14,55 +14,55 @@
    ============================================================ */
 :root {
   /* --------------------------------------------------
-     배경 계층 (Background)
+     배경 계층 (Background) — Light Theme
      -------------------------------------------------- */
-  --bg-primary:   #0f1117;   /* 앱 전체 배경 */
-  --bg-secondary: #171b26;   /* 패널·사이드바 */
-  --bg-tertiary:  #252a3a;   /* 카드·오버레이·스크롤바 */
-  --bg-hover:     #2e3550;   /* 호버 상태 */
-  --bg-active:    #36405e;   /* 활성·선택 상태 */
+  --bg-primary:   #FFFFFF;   /* 앱 전체 배경 */
+  --bg-secondary: #F9FAFB;   /* 패널·사이드바 */
+  --bg-tertiary:  #F2F4F8;   /* 카드·오버레이·스크롤바 */
+  --bg-hover:     #EBEEF5;   /* 호버 상태 */
+  --bg-active:    #DDE2EE;   /* 활성·선택 상태 */
 
   /* --------------------------------------------------
      텍스트 (Text)
      -------------------------------------------------- */
-  --text-primary:   #e8eaf0;  /* 본문 */
-  --text-secondary: #8b93a8;  /* 보조 */
-  --text-muted:     #4d5568;  /* 비활성·placeholder */
-  --text-disabled:  #2d3348;  /* 비활성화 */
+  --text-primary:   #191F28;  /* 본문 */
+  --text-secondary: #4E5968;  /* 보조 */
+  --text-muted:     #8B95A1;  /* 비활성·placeholder */
+  --text-disabled:  #C9D0DA;  /* 비활성화 */
 
   /* --------------------------------------------------
-     강조색 (Accent)
+     강조색 (Accent) — Toss Blue #3182F6
      -------------------------------------------------- */
-  --accent-blue:       #4f8ef7;  /* 주요 액션·링크 */
-  --accent-blue-hover: #6fa5ff;
-  --accent-green:      #3ecf8e;  /* 성공·완료 */
-  --accent-amber:      #f59e0b;  /* 경고 */
-  --accent-red:        #ef4444;  /* 오류·삭제 */
-  --accent-recording:  #ff5252;  /* 녹음 중 */
+  --accent-blue:       #3182F6;  /* 주요 액션·링크 */
+  --accent-blue-hover: #1B6EE4;
+  --accent-green:      #05C46B;  /* 성공·완료 */
+  --accent-amber:      #F0B429;  /* 경고 */
+  --accent-red:        #F03E3E;  /* 오류·삭제 */
+  --accent-recording:  #FF5252;  /* 녹음 중 */
 
   /* --------------------------------------------------
      테두리 (Border)
      -------------------------------------------------- */
-  --border-default: #2d3348;
-  --border-focus:   #4f8ef7;
-  --border-subtle:  #1e2332;
+  --border-default: #E2E8F0;
+  --border-focus:   #3182F6;
+  --border-subtle:  #F1F3F7;
 
   /* --------------------------------------------------
      형광펜 (Highlight — 5색, 반투명)
      -------------------------------------------------- */
-  --highlight-yellow: rgba(255, 235,  59, 0.38);
-  --highlight-green:  rgba( 76, 175,  80, 0.38);
-  --highlight-blue:   rgba( 33, 150, 243, 0.38);
-  --highlight-pink:   rgba(233,  30,  99, 0.38);
-  --highlight-orange: rgba(255, 152,   0, 0.38);
+  --highlight-yellow: rgba(255, 214,   0, 0.40);
+  --highlight-green:  rgba( 52, 199, 123, 0.35);
+  --highlight-blue:   rgba( 49, 130, 246, 0.25);
+  --highlight-pink:   rgba(233,  30,  99, 0.25);
+  --highlight-orange: rgba(255, 138,   0, 0.35);
 
   /* --------------------------------------------------
      상태 배지 (Status — Whisper / Job Queue)
      -------------------------------------------------- */
-  --status-idle:    #4d5568;
-  --status-loading: #f59e0b;
-  --status-ready:   #3ecf8e;
-  --status-error:   #ef4444;
+  --status-idle:    #8B95A1;
+  --status-loading: #F0B429;
+  --status-ready:   #05C46B;
+  --status-error:   #F03E3E;
 
   /* --------------------------------------------------
      레이아웃 (Layout)
@@ -73,8 +73,8 @@
   /* --------------------------------------------------
      그림자 (Shadow)
      -------------------------------------------------- */
-  --shadow-panel:   0 4px 24px rgba(0, 0, 0, 0.5);
-  --shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.7);
+  --shadow-panel:   0 4px 24px rgba(0, 0, 0, 0.08);
+  --shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.12);
 
   /* --------------------------------------------------
      폰트 (Font)
@@ -175,12 +175,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: var(--bg-tertiary);
+  background-color: var(--bg-active);
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: var(--bg-secondary);
+  background-color: var(--text-disabled);
 }
 
 ::-webkit-scrollbar-corner {
@@ -199,4 +199,17 @@ body {
 
 .katex {
   font-size: 1em;
+}
+
+/* ============================================================
+   페이지 전환 애니메이션
+   ============================================================ */
+
+@keyframes page-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.page-enter {
+  animation: page-fade-in 150ms ease forwards;
 }

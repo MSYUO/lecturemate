@@ -107,6 +107,16 @@ interface SessionState {
    * H 키 + 1~5 숫자키로 변경합니다.
    */
   activeHighlightColor: HighlightColor
+
+  /**
+   * "항상 같은 폴더에 저장" 체크 시 설정되는 기본 저장 폴더 ID.
+   * null이면 매번 저장 위치 선택 모달 표시.
+   */
+  defaultSaveFolderId: string | null
+
+  activePenColor: string
+  penThickness: number
+  activeShapeType: 'rect' | 'circle' | 'line'
 }
 
 interface SessionActions {
@@ -155,6 +165,13 @@ interface SessionActions {
   /** 형광펜 색상 변경 (H+1~5) */
   setActiveHighlightColor: (color: HighlightColor) => void
 
+  /** 기본 저장 폴더 설정 (SaveLocationModal "항상 같은 폴더에 저장" 체크 시) */
+  setDefaultSaveFolderId: (id: string | null) => void
+
+  setActivePenColor: (color: string) => void
+  setPenThickness: (thickness: number) => void
+  setActiveShapeType: (type: 'rect' | 'circle' | 'line') => void
+
   // ---- Whisper ----
 
   /**
@@ -197,6 +214,10 @@ const INITIAL_STATE: SessionState = {
   isTaggingMode: false,
   activeToolType: 'pointer',
   activeHighlightColor: 'yellow' as HighlightColor,
+  defaultSaveFolderId: null,
+  activePenColor: '#000000',
+  penThickness: 2,
+  activeShapeType: 'rect' as const,
   whisperStatus: 'idle',
   whisperProgress: 0,
   saveStatus: 'saved',
@@ -253,14 +274,22 @@ export const useSessionStore = create<SessionState & SessionActions>()((set, get
 
   setIsTaggingMode: (mode) => set({ isTaggingMode: mode }),
 
-  setActiveTool: (tool) =>
+  setActiveTool: (tool) => {
+    console.log('[sessionStore] setActiveTool:', tool)
     set({
       activeToolType: tool,
       // 태거 도구로 전환하면 태깅 모드 자동 활성화
       isTaggingMode: tool === 'tagger' ? true : get().isTaggingMode,
-    }),
+    })
+  },
 
   setActiveHighlightColor: (color) => set({ activeHighlightColor: color }),
+
+  setDefaultSaveFolderId: (id) => set({ defaultSaveFolderId: id }),
+
+  setActivePenColor: (color) => set({ activePenColor: color }),
+  setPenThickness: (thickness) => set({ penThickness: thickness }),
+  setActiveShapeType: (type) => set({ activeShapeType: type }),
 
   // ---- Whisper ----
 

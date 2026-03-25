@@ -67,7 +67,7 @@ const HIGHLIGHT_CSS_COLOR: Record<string, string> = {
 export function exportToHtml(data: ExportData): string {
   const {
     session, tags, annotations, textboxes,
-    highlights, stickers, sttSegments, codeSnippets,
+    highlights, stickers, sttSegments,
   } = data
 
   const sections: string[] = []
@@ -79,7 +79,6 @@ export function exportToHtml(data: ExportData): string {
     ...textboxes  .map((tb) => tb.pageNumber),
     ...highlights .map((h) => h.pageNumber),
     ...stickers   .map((s) => s.pageNumber),
-    ...codeSnippets.filter((c) => c.pageNumber != null).map((c) => c.pageNumber!),
   ])
 
   for (const page of [...pages].sort((a, b) => a - b)) {
@@ -166,17 +165,6 @@ export function exportToHtml(data: ExportData): string {
       parts.push(`</ul>`)
     }
 
-    // 코드
-    const pageCode = codeSnippets.filter((c) => c.pageNumber === page)
-    if (pageCode.length > 0) {
-      parts.push(`<h3>코드</h3>`)
-      for (const snippet of pageCode) {
-        parts.push(
-          `<pre class="code-block" data-lang="${snippet.language}"><code>${esc(snippet.source)}</code></pre>`,
-        )
-      }
-    }
-
     if (parts.length > 1) {
       sections.push(`<section class="page-section">\n${parts.join('\n')}\n</section>`)
     }
@@ -190,18 +178,6 @@ export function exportToHtml(data: ExportData): string {
     )
     sections.push(
       `<section class="page-section">\n<h2>STT 전체 텍스트</h2>\n<ul class="stt-list">\n${sttLines.join('\n')}\n</ul>\n</section>`,
-    )
-  }
-
-  // ── 페이지 미연결 코드 ────────────────────────────────────
-  const unpagedCode = codeSnippets.filter((c) => c.pageNumber == null)
-  if (unpagedCode.length > 0) {
-    const codeBlocks = unpagedCode.map(
-      (s) =>
-        `<pre class="code-block" data-lang="${s.language}"><code>${esc(s.source)}</code></pre>`,
-    )
-    sections.push(
-      `<section class="page-section">\n<h2>코드 스니펫</h2>\n${codeBlocks.join('\n')}\n</section>`,
     )
   }
 

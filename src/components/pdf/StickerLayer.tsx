@@ -91,17 +91,13 @@ export function StickerLayer({ pageNumber, activeStickerType }: Props) {
   const addSticker    = useUndoRedoStore((s) => s.addSticker)
   const deleteSticker = useUndoRedoStore((s) => s.deleteSticker)
   // updateSticker이 없으므로 이동은 삭제→재생성으로 처리
-  const updateStickerLabel = useAnnotationStore((_s) => {
-    // annotationStore에 직접 접근해 label만 업데이트
-    return (id: string, label: string) => {
-      const stickersArr = useAnnotationStore.getState().stickers
-      const idx = stickersArr.findIndex((st) => st.id === id)
-      if (idx === -1) return
-      useAnnotationStore.setState((state) => ({
-        stickers: state.stickers.map((st) => st.id === id ? { ...st, label } : st),
-      }))
-    }
-  })
+  // NOTE: useAnnotationStore selector로 함수를 반환하면 매 렌더마다 새 참조 →
+  //       Zustand가 변경 감지 → 무한 리렌더 발생. useCallback으로 직접 정의.
+  const updateStickerLabel = useCallback((id: string, label: string) => {
+    useAnnotationStore.setState((state) => ({
+      stickers: state.stickers.map((st) => st.id === id ? { ...st, label } : st),
+    }))
+  }, [])
 
   // ---- 좌표 변환 ----
   const toNorm = useCallback((clientX: number, clientY: number): Point => {
